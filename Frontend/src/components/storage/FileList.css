@@ -1,26 +1,79 @@
+/* Добавляем эти стили */
+
 .file-list {
   max-width: 100%;
 }
 
 .file-list-header {
   display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 2rem;
-  flex-wrap: wrap;
+  flex-direction: column;
   gap: 1rem;
+  margin-bottom: 2rem;
 }
 
-.file-list-header h2 {
-  color: #2c3e50;
-  margin: 0;
-}
-
-.files-container {
-  background: white;
+.path-navigation {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  padding: 1rem;
+  background: #f8f9fa;
   border-radius: 8px;
-  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
-  overflow: hidden;
+  flex-wrap: wrap;
+}
+
+.back-button {
+  padding: 0.5rem 1rem;
+  background: #6c757d;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 0.9rem;
+}
+
+.back-button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.breadcrumbs {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.breadcrumb-separator {
+  color: #6c757d;
+}
+
+.breadcrumb-link {
+  background: none;
+  border: none;
+  color: #007bff;
+  cursor: pointer;
+  font-size: 0.9rem;
+  padding: 0.25rem 0.5rem;
+  border-radius: 4px;
+}
+
+.breadcrumb-link:hover:not(:disabled) {
+  background: #e9ecef;
+}
+
+.breadcrumb-link:disabled {
+  color: #495057;
+  cursor: default;
+}
+
+.current-path {
+  color: #6c757d;
+  font-size: 0.9rem;
+  margin-left: auto;
+  padding: 0.25rem 0.5rem;
+  background: white;
+  border-radius: 4px;
+  border: 1px solid #dee2e6;
 }
 
 .file-grid {
@@ -36,8 +89,9 @@
   padding: 1rem;
   border: 1px solid #e9ecef;
   border-radius: 8px;
-  transition: all 0.2s;
   background: white;
+  transition: all 0.2s;
+  position: relative;
 }
 
 .file-item:hover {
@@ -46,9 +100,9 @@
 }
 
 .file-icon {
-  position: relative;
-  margin-right: 1rem;
   font-size: 1.5rem;
+  margin-right: 1rem;
+  position: relative;
 }
 
 .encrypted-badge {
@@ -59,6 +113,7 @@
   background: white;
   border-radius: 50%;
   padding: 2px;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.1);
 }
 
 .file-info {
@@ -73,6 +128,18 @@
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+.file-name .original-name {
+  font-weight: bold;
+  color: #28a745;
+}
+
+.file-name .encrypted-hint,
+.file-name .encrypted-indicator {
+  font-size: 0.8rem;
+  color: #6c757d;
+  margin-left: 0.5rem;
 }
 
 .file-meta {
@@ -103,12 +170,12 @@
   padding: 0.5rem;
   border-radius: 4px;
   cursor: pointer;
-  transition: background-color 0.2s;
   font-size: 1rem;
+  transition: background-color 0.2s;
 }
 
 .action-btn:hover {
-  background-color: #f8f9fa;
+  background: #f8f9fa;
 }
 
 .download-btn:hover {
@@ -134,11 +201,10 @@
   text-align: center;
   padding: 2rem;
   color: #6c757d;
-  font-size: 1.1rem;
 }
 
 .error-message {
-  background-color: #f8d7da;
+  background: #f8d7da;
   color: #721c24;
   padding: 1rem;
   border-radius: 4px;
@@ -146,61 +212,112 @@
   border: 1px solid #f5c6cb;
 }
 
-/* Добавьте в FileList.css */
-.path-navigation {
-  display: flex;
-  align-items: center;
-  gap: 1rem;
-  margin-bottom: 1rem;
-  padding: 1rem;
-  background-color: #f8f9fa;
-  border-radius: 8px;
-}
-
-.back-button {
-  padding: 0.5rem 1rem;
-  background-color: #6c757d;
-  color: white;
-  border: none;
-  border-radius: 4px;
-  cursor: pointer;
-}
-
-.back-button:disabled {
-  background-color: #ccc;
-  cursor: not-allowed;
-}
-
-.back-button:hover:not(:disabled) {
-  background-color: #545b62;
-}
-
-.current-path {
-  font-size: 0.9rem;
-  color: #666;
-}
-
-.folder-icon:hover {
-  transform: scale(1.1);
-  transition: transform 0.2s;
-}
-
 /* Адаптивность */
 @media (max-width: 768px) {
-  .file-list-header {
+  .path-navigation {
     flex-direction: column;
-    align-items: stretch;
+    align-items: flex-start;
+  }
+  
+  .current-path {
+    margin-left: 0;
+    margin-top: 0.5rem;
   }
   
   .file-grid {
     grid-template-columns: 1fr;
   }
-  
-  .file-item {
-    padding: 0.75rem;
+}
+
+/* Добавляем в конец файла */
+
+.header-main {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 1rem;
+}
+
+.stats {
+  display: flex;
+  gap: 1rem;
+  font-size: 0.9rem;
+  color: #6c757d;
+}
+
+.stat-item {
+  background: #f8f9fa;
+  padding: 0.5rem 1rem;
+  border-radius: 4px;
+  border: 1px solid #dee2e6;
+}
+
+.section-title {
+  margin: 2rem 0 1rem 0;
+  padding-bottom: 0.5rem;
+  border-bottom: 2px solid #e9ecef;
+  color: #495057;
+}
+
+.folder-item {
+  background-color: #f8f9fa;
+  border-color: #dee2e6;
+  cursor: pointer;
+}
+
+.folder-item:hover {
+  background-color: #e9ecef;
+  border-color: #007bff;
+  transform: translateY(-2px);
+  transition: all 0.2s;
+}
+
+.folder-icon-large {
+  font-size: 2rem;
+}
+
+.folder-indicator {
+  font-size: 0.8rem;
+  color: #6c757d;
+  font-style: italic;
+  margin-left: 0.5rem;
+}
+
+.open-btn:hover {
+  color: #007bff;
+}
+
+.file-type {
+  font-size: 0.8rem;
+  color: #28a745;
+  font-weight: 500;
+}
+
+.loading-spinner {
+  width: 40px;
+  height: 40px;
+  border: 4px solid #f3f3f3;
+  border-top: 4px solid #007bff;
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+  margin: 0 auto 1rem auto;
+}
+
+@keyframes spin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+
+/* Адаптивность */
+@media (max-width: 768px) {
+  .header-main {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 1rem;
   }
   
-  .file-actions {
-    flex-direction: column;
+  .stats {
+    width: 100%;
+    justify-content: space-between;
   }
 }

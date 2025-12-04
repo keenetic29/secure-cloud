@@ -1,36 +1,221 @@
 import { useState, useEffect } from 'react';
 import { storageService } from '../services/storage';
 
-export const useStorage = (path = '') => {
+export const useStorage = (path = '/') => {
   const [files, setFiles] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
-  useEffect(() => {
-    fetchFiles();
-  }, [path]);
-
   const fetchFiles = async () => {
     try {
       setLoading(true);
+      console.log(`Fetching files from path: ${path}`);
+      
       const response = await storageService.getFiles(path);
-      setFiles(response.data.files || []);
+      console.log('API Response:', response);
+      console.log('Response data:', response.data);
+      
+      if (!response.data) {
+        console.warn('No data in response');
+        setFiles([]);
+        setError('');
+        return;
+      }
+      
+      // Обрабатываем ответ с заглавными полями
+      const normalizeFileData = (file) => {
+        // Если поля уже в нижнем регистре, оставляем как есть
+        if (file.id !== undefined) {
+          return file;
+        }
+        
+        // Конвертируем поля из заглавных в строчные
+        return {
+          id: file.ID || file.id || 0,
+          user_id: file.UserID || file.user_id || 0,
+          filename: file.Filename || file.filename || '',
+          encrypted_name: file.EncryptedName || file.encrypted_name || '',
+          path: file.Path || file.path || '',
+          size: file.Size || file.size || 0,
+          mime_type: file.MimeType || file.mime_type || '',
+          is_encrypted: file.IsEncrypted || file.is_encrypted || false,
+          type: file.Type || file.type || 'file',
+          created_at: file.CreatedAt || file.created_at,
+          updated_at: file.UpdatedAt || file.updated_at,
+          deleted_at: file.DeletedAt || file.deleted_at,
+          // Сохраняем оригинальные данные
+          ...file
+        };
+      };
+      
+      const filesArray = response.data.files || [];
+      console.log('Files array (raw):', filesArray);
+      
+      // Нормализуем данные файлов
+      const processedFiles = filesArray.map((file, index) => {
+        const normalizedFile = normalizeFileData(file);
+        console.log(`Processing file ${index}:`, normalizedFile);
+        
+        // Определяем тип (файл или папка)
+        let type = normalizedFile.type;
+        if (!type) {
+          type = normalizedFile.mime_type === 'directory' ? 'dir' : 'file';
+        }
+        
+        // Определяем имя для отображения
+        let displayName = normalizedFile.filename;
+        if (!displayName || displayName === 'unknown' || displayName === 'encrypted_file') {
+          displayName = normalizedFile.encrypted_name || 
+                       normalizedFile.path?.split('/').pop() || 
+                       `item_${index}`;
+        }
+        
+        // Обрабатываем путь
+        let processedPath = normalizedFile.path;
+        if (processedPath && processedPath.startsWith('disk:')) {
+          processedPath = processedPath.substring(5); // Убираем "disk:"
+        }
+        
+        // Определяем, зашифрован ли файл
+        const isEncrypted = normalizedFile.is_encrypted || 
+                           (normalizedFile.encrypted_name && 
+                            normalizedFile.encrypted_name.endsWith('.encrypted'));
+        
+        return {
+          id: normalizedFile.id || index,
+          type: type.toLowerCase(),
+          filename: displayName,
+          path: processedPath,
+          original_path: normalizedFile.path,
+          is_encrypted: isEncrypted,
+          size: normalizedFile.size || 0,
+          mime_type: normalizedFile.mime_type || (type === 'dir' ? 'directory' : 'application/octet-stream'),
+          encrypted_name: normalizedFile.encrypted_name,
+          created_at: normalizedFile.created_at,
+          updated_at: normalizedFile.updated_at,
+          // Сохраняем все нормализованные данные
+          ...normalizedFile
+        };
+      });
+      
+      console.log(`Processed ${processedFiles.length} items:`, processedFiles);
+      setFiles(processedFiles);
       setError('');
+      
     } catch (error) {
-      setError(error.response?.data?.error || 'Failed to load files');
+      console.error('Error fetching files:', error);
+      console.error('Error details:', error.response?.data || error.message);
+      
+      // Показываем более конкретное сообщение об ошибке
+      if (error.response?.status === 401) {
+        setError('Authentication failed. Please login again.');
+      } else if (error.response?.status === 403) {
+        setError('Access denied. Check your permissions.');
+      } else if (error.response?.data?.error) {
+        setError(`Server error: ${error.response.data.error}`);
+      } else if (error.message.includes('Network Error')) {
+        setError('Network error. Check your connection and server.');
+      } else {
+        setError(`Failed to load files: ${error.message}`);
+      }
+      
+      setFiles([]);
     } finally {
       setLoading(false);
     }
   };
 
-  const refreshFiles = () => {
+  useEffect(() => {
     fetchFiles();
+  }, [path]);
+
+  const refresh = () => {
+    fetchFiles();
+  };
+
+  const uploadFile = async (file, masterPassword) => {
+    try {
+      const response = await storageService.uploadFile(file, masterPassword, path);
+      await fetchFiles(); // Обновляем список
+      return { success: true, data: response.data };
+    } catch (error) {
+      console.error('Upload error:', error);
+      return { 
+        success: false, 
+        error: error.response?.data?.error || 'Upload failed' 
+      };
+    }
+  };
+
+  const downloadFile = async (fileId, masterPassword) => {
+    try {
+      const response = await storageService.downloadFile(fileId, masterPassword);
+      
+      const contentDisposition = response.headers['content-disposition'];
+      let filename = 'downloaded_file';
+      
+      if (contentDisposition) {
+        const filenameMatch = contentDisposition.match(/filename="(.+)"/);
+        if (filenameMatch && filenameMatch.length === 2) {
+          filename = decodeURIComponent(filenameMatch[1]);
+        }
+      }
+      
+      const blob = new Blob([response.data]);
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.setAttribute('download', filename);
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.URL.revokeObjectURL(url);
+      
+      return { success: true };
+    } catch (error) {
+      console.error('Download error:', error);
+      return { 
+        success: false, 
+        error: error.response?.data?.error || 'Download failed' 
+      };
+    }
+  };
+
+  const deleteFile = async (fileId) => {
+    try {
+      await storageService.deleteFile(fileId);
+      await fetchFiles();
+      return { success: true };
+    } catch (error) {
+      console.error('Delete error:', error);
+      return { 
+        success: false, 
+        error: error.response?.data?.error || 'Delete failed' 
+      };
+    }
+  };
+
+  const getDecryptedFilename = async (fileId, masterPassword) => {
+    try {
+      const response = await storageService.getDecryptedFilename(fileId, masterPassword);
+      return { success: true, filename: response.data.filename };
+    } catch (error) {
+      console.error('Decrypt filename error:', error);
+      return { 
+        success: false, 
+        error: error.response?.data?.error || 'Failed to get filename' 
+      };
+    }
   };
 
   return {
     files,
     loading,
     error,
-    refreshFiles
+    refresh,
+    uploadFile,
+    downloadFile,
+    deleteFile,
+    getDecryptedFilename
   };
 };

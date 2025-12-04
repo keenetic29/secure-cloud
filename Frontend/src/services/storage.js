@@ -1,7 +1,43 @@
 import api from './api';
-import { yandexDiskService } from './yandexDisk';
 
 export const storageService = {
+  // Получение списка файлов
+  getFiles: (path = '/') => 
+    api.get('/storage/files', { params: { path } }),
+
+  // Получение информации о файле
+  getFileInfo: (fileId) => 
+    api.get(`/storage/files/${fileId}`),
+
+  // Получение расшифрованного имени файла
+  getDecryptedFilename: (fileId, masterPassword) => 
+    api.post(`/storage/files/${fileId}/decrypt-name`, { master_password: masterPassword }),
+
+  // Загрузка файла
+  uploadFile: (file, masterPassword, path = '/') => {
+    const formData = new FormData();
+    formData.append('file', file);
+    formData.append('master_password', masterPassword);
+    
+    return api.post(`/storage/upload?path=${encodeURIComponent(path)}`, formData, {
+      headers: {
+        'Content-Type': 'multipart/form-data'
+      }
+    });
+  },
+
+  // Скачивание файла
+  downloadFile: (fileId, masterPassword) => 
+    api.post(`/storage/files/${fileId}/download`, 
+      { master_password: masterPassword },
+      { responseType: 'blob' }
+    ),
+
+  // Удаление файла
+  deleteFile: (fileId) => 
+    api.delete(`/storage/files/${fileId}`),
+
+  // Яндекс.Диск OAuth
   getYandexAuthURL: () => 
     api.get('/storage/yandex/auth-url'),
 
@@ -10,35 +46,4 @@ export const storageService = {
 
   getYandexToken: () =>
     api.get('/storage/yandex/token'),
-
-  // Получаем файлы через прямое обращение к Яндекс.Диску
-  // Получаем файлы через прямое обращение к Яндекс.Диску
-  getFiles: async (path = '') => {
-    const data = await yandexDiskService.getFilesList(path || '/');
-    
-    // Преобразуем ответ Яндекс.Диска в нашу структуру
-    const files = data._embedded.items.map(item => ({
-      id: item.resource_id,
-      filename: item.name,
-      path: item.path,
-      size: item.size,
-      mimeType: item.mime_type,
-      type: item.type, // 'file' или 'dir'
-      modified: item.modified,
-      created: item.created,
-      isEncrypted: item.name.endsWith('.encrypted') // Простая проверка
-    }));
-
-    return { data: { files } };
-  },
-
-  // Остальные методы теперь работают через прямой API
-  uploadFile: (file, encryptedFilename) =>
-    yandexDiskService.uploadFile(file, encryptedFilename),
-
-  downloadFile: (filePath) =>
-    yandexDiskService.downloadFile(filePath),
-
-  deleteFile: (filePath) =>
-    yandexDiskService.deleteFile(filePath),
 };

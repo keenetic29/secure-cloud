@@ -89,6 +89,9 @@ func main() {
 			storageGroup.GET("/yandex/token", storageHandler.GetYandexToken) 
 			storageGroup.GET("/files", storageHandler.GetFiles)
 			storageGroup.GET("/files/:id", storageHandler.GetFileInfo)
+			storageGroup.POST("/files/:id/decrypt-name", storageHandler.GetDecryptedFilename)
+			storageGroup.POST("/upload", storageHandler.UploadFile)
+			storageGroup.POST("/files/:id/download", storageHandler.DownloadFile)
 			storageGroup.DELETE("/files/:id", storageHandler.DeleteFile)
 		}
 		

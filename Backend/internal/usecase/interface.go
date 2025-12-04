@@ -2,6 +2,7 @@ package usecase
 
 import (
 	"context"
+	"mime/multipart"
 	
 	"server/internal/entity"
 )
@@ -24,7 +25,10 @@ type StorageUseCase interface {
 	GetAuthURL(ctx context.Context) string
 	HandleCallback(ctx context.Context, code string, userID uint) error
 	GetFiles(ctx context.Context, userID uint, path string) ([]*entity.FileMetadata, error)
-	DeleteFile(ctx context.Context, userID uint, fileID uint) error
 	GetFileInfo(ctx context.Context, userID uint, fileID uint) (*entity.FileMetadata, error)
+	GetDecryptedFilename(ctx context.Context, userID uint, fileID uint, masterPassword string) (string, error)
+	UploadFile(ctx context.Context, userID uint, fileHeader *multipart.FileHeader, masterPassword, path string) (*entity.FileMetadata, error)
+	DownloadFile(ctx context.Context, userID uint, fileID uint, masterPassword string) ([]byte, string, error)
+	DeleteFile(ctx context.Context, userID uint, fileID uint) error
 	GetYandexToken(ctx context.Context, userID uint) (string, error)
 }

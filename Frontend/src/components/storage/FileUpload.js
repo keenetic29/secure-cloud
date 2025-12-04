@@ -1,5 +1,4 @@
 import React, { useState } from 'react';
-import { cryptoService } from '../../utils/encryption';
 import { storageService } from '../../services/storage';
 import './FileUpload.css';
 
@@ -8,58 +7,41 @@ const FileUpload = ({ onUploadSuccess, currentPath = '/' }) => {
   const [progress, setProgress] = useState(0);
   const [error, setError] = useState('');
 
-  const getMasterPassword = () => {
-    return prompt('Enter your master password to encrypt the file:');
-  };
-
   const handleFileSelect = async (event) => {
     const file = event.target.files[0];
     if (!file) return;
 
-    const masterPassword = getMasterPassword();
+    const masterPassword = prompt('Enter your master password to encrypt the file:');
     if (!masterPassword) return;
+
+    // Сохраняем пароль для подсказок
+    localStorage.setItem('lastMasterPassword', masterPassword);
 
     setUploading(true);
     setError('');
     setProgress(0);
 
     try {
-      // Шифруем файл на клиенте
+      // Симулируем прогресс для UX
       setProgress(30);
-      const encryptedFile = await cryptoService.encryptFile(file, masterPassword);
       
-      // Шифруем имя файла
-      setProgress(60);
-      const encryptedFilename = await cryptoService.encryptFilename(file.name, masterPassword);
-      
-      // Создаем полный путь с учетом текущей папки
-      const fullPath = currentPath === '/' ? 
-        encryptedFilename : 
-        `${currentPath}/${encryptedFilename}`;
-      
-      // Загружаем напрямую в Яндекс.Диск с отслеживанием прогресса
-      setProgress(80);
-      await storageService.uploadFile(encryptedFile, fullPath, (uploadProgress) => {
-        setProgress(80 + Math.floor(uploadProgress * 0.2)); // 80-100%
-      });
+      const response = await storageService.uploadFile(file, masterPassword, currentPath);
       
       setProgress(100);
       
-      // Обновляем список файлов
       setTimeout(() => {
         setUploading(false);
         setProgress(0);
         onUploadSuccess();
-        alert(`✅ File "${file.name}" successfully encrypted and uploaded to Yandex.Disk!`);
+        alert(`✅ File "${file.name}" encrypted and uploaded successfully!\nEncrypted as: ${response.data.encrypted_name}`);
       }, 500);
 
     } catch (error) {
-      setError(error.message);
+      setError(error.response?.data?.error || 'Upload failed');
       setUploading(false);
       setProgress(0);
     }
   };
-
 
   const handleDragOver = (event) => {
     event.preventDefault();
@@ -108,14 +90,14 @@ const FileUpload = ({ onUploadSuccess, currentPath = '/' }) => {
                 style={{ width: `${progress}%` }}
               ></div>
             </div>
-            <span>Encrypting and uploading... {progress}%</span>
+            <span>Encrypting and uploading... {Math.round(progress)}%</span>
           </div>
         ) : (
           <>
             <div className="upload-icon">📁</div>
             <div className="upload-text">
               <strong>Click to upload or drag and drop</strong>
-              <small>Files are encrypted before uploading to Yandex.Disk</small>
+              <small>Files are encrypted server-side before storage</small>
             </div>
           </>
         )}
@@ -128,9 +110,10 @@ const FileUpload = ({ onUploadSuccess, currentPath = '/' }) => {
       )}
 
       <div className="upload-info">
-        <p>🔒 Files are encrypted with AES-256 on your device before uploading</p>
-        <p>🚀 Uploaded directly to your Yandex.Disk</p>
+        <p>🔒 Files are encrypted with AES-256 on the server</p>
+        <p>📝 Original filenames are stored securely in database</p>
         <p>🔑 Only you can decrypt files with your master password</p>
+        <p>💾 Uploading to: {currentPath === '/' ? 'Root folder' : currentPath}</p>
       </div>
     </div>
   );

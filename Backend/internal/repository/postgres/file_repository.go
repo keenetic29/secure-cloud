@@ -2,6 +2,7 @@ package postgres
 
 import (
 	"context"
+	"fmt"
 	
 	"gorm.io/gorm"
 	
@@ -57,7 +58,11 @@ func (r *fileRepository) GetFileByPath(ctx context.Context, userID uint, path st
 		Where("user_id = ? AND path = ?", userID, path).
 		First(&file).Error
 	if err != nil {
+		fmt.Printf("DEBUG: No existing metadata found for path %s (user %d): %v\n", path, userID, err)
 		return nil, err
 	}
+	
+	fmt.Printf("DEBUG: Found existing metadata for path %s: %s (ID: %d)\n", 
+		path, file.Filename, file.ID)
 	return &file, nil
 }

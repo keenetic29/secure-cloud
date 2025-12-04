@@ -1,133 +1,124 @@
 import React, { useState, useEffect } from 'react';
-import { storageService } from '../../services/storage';
-import { cryptoService } from '../../utils/encryption';
+import { useStorage } from '../../hooks/useStorage';
 import FileUpload from './FileUpload';
 import './FileList.css';
 
 const FileList = () => {
-  const [files, setFiles] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState('');
   const [currentPath, setCurrentPath] = useState('/');
+  const [hoveredFile, setHoveredFile] = useState(null);
+  const [originalName, setOriginalName] = useState(null);
   const [navigationHistory, setNavigationHistory] = useState(['/']);
+  
+  const {
+    files,
+    loading,
+    error,
+    refresh,
+    downloadFile,
+    deleteFile,
+    getDecryptedFilename
+  } = useStorage(currentPath);
 
-  useEffect(() => {
-    fetchFiles();
-  }, [currentPath]);
-
-  const fetchFiles = async () => {
-    try {
-      setLoading(true);
-      const response = await storageService.getFiles(currentPath);
-      setFiles(response.data.files || []);
-      setError('');
-    } catch (error) {
-      setError('Failed to load files: ' + error.message);
-      console.error('Error fetching files from path:', currentPath);
-      console.error('Error details:', error);
-    } finally {
-      setLoading(false);
+  const handleFolderClick = (folder) => {
+    console.log('Folder clicked (full object):', folder);
+    
+    // Если передана строка вместо объекта, преобразуем
+    let folderObj = folder;
+    if (typeof folder === 'string') {
+      // Находим объект папки по пути
+      folderObj = files.find(f => f.path === folder || f.original_path === folder);
+      if (!folderObj) {
+        // Пытаемся создать минимальный объект из строки
+        const pathParts = folder.split('/').filter(part => part !== '' && part !== 'disk:');
+        const folderName = pathParts[pathParts.length - 1] || 'folder';
+        folderObj = {
+          path: folder,
+          filename: folderName,
+          type: 'dir'
+        };
+      }
     }
+    
+    // Используем нормализованные поля
+    const folderPath = folderObj?.path || folderObj?.original_path || folder;
+    
+    if (!folderPath) {
+      console.error('No path found for folder:', folderObj);
+      return;
+    }
+    
+    console.log('Folder path for navigation:', folderPath);
+    
+    // Извлекаем имя папки для навигации
+    const pathParts = folderPath.split('/').filter(part => part !== '' && part !== 'disk:');
+    const folderName = pathParts[pathParts.length - 1] || folderObj.filename || 'folder';
+    
+    console.log('Folder name extracted:', folderName);
+    
+    // Формируем новый путь для API запроса
+    let newPath;
+    if (currentPath === '/') {
+      newPath = '/' + folderName;
+    } else {
+      // Убедимся, что текущий путь не заканчивается слэшом
+      const cleanCurrent = currentPath.endsWith('/') 
+        ? currentPath.slice(0, -1) 
+        : currentPath;
+      newPath = cleanCurrent + '/' + folderName;
+    }
+    
+    console.log(`Navigating from "${currentPath}" to "${newPath}"`);
+    setNavigationHistory(prev => [...prev, newPath]);
+    setCurrentPath(newPath);
   };
-
-  const handleFileUpload = () => {
-    fetchFiles();
-  };
-
-  const handleFolderClick = (folderPath) => {
-  console.log('Original folder path:', folderPath);
-  
-  // Очищаем путь от disk:
-  let cleanPath = folderPath.replace(/^\/?disk:/, '');
-  if (!cleanPath.startsWith('/')) {
-    cleanPath = '/' + cleanPath;
-  }
-  
-  console.log('Cleaned folder path:', cleanPath);
-  setNavigationHistory(prev => [...prev, cleanPath]);
-  setCurrentPath(cleanPath);
-};
 
   const handleBackClick = () => {
     if (navigationHistory.length > 1) {
       const newHistory = navigationHistory.slice(0, -1);
       const previousPath = newHistory[newHistory.length - 1];
-      
-      console.log('Navigating back from:', currentPath, 'to:', previousPath);
-      
+      console.log('Going back from', currentPath, 'to', previousPath);
       setNavigationHistory(newHistory);
       setCurrentPath(previousPath);
     }
   };
 
   const getBreadcrumbs = () => {
-  if (currentPath === '/') return ['Root'];
-  
-  try {
-    // Очищаем путь от disk: для breadcrumbs
-    const cleanPath = currentPath.replace(/^\/?disk:/, '');
-    const parts = cleanPath.split('/').filter(part => part !== '');
-    return ['Root', ...parts];
-  } catch (error) {
-    return ['Root'];
-  }
-};
+    if (currentPath === '/') return ['Root'];
+    
+    try {
+      const cleanPath = currentPath.replace(/^\/+|\/+$/g, '');
+      const parts = cleanPath.split('/').filter(part => part !== '');
+      return ['Root', ...parts];
+    } catch (error) {
+      console.error('Error parsing breadcrumbs:', error);
+      return ['Root'];
+    }
+  };
 
   const handleBreadcrumbClick = (index) => {
     const breadcrumbs = getBreadcrumbs();
     
     if (index === 0) {
-      // Корень
       setNavigationHistory(['/']);
       setCurrentPath('/');
     } else {
-      // Строим путь из breadcrumbs
       const pathParts = breadcrumbs.slice(1, index + 1);
       const newPath = '/' + pathParts.join('/');
-      
       console.log('Breadcrumb navigation to:', newPath);
       setNavigationHistory(prev => [...prev.slice(0, -1), newPath]);
       setCurrentPath(newPath);
     }
   };
 
-  const breadcrumbs = getBreadcrumbs();
-
-  // УБИРАЕМ ФИЛЬТРАЦИЮ - показываем ВСЕ файлы и папки
-  // const filteredFiles = files; // Просто используем files как есть
-
-  const getMasterPassword = () => {
-    return prompt('Enter your master password to decrypt the file:');
-  };
-
   const handleDownload = async (file) => {
-    try {
-      const masterPassword = getMasterPassword();
-      if (!masterPassword) return;
+    if (file.type === 'dir') return;
+    
+    const masterPassword = prompt('Enter your master password to download the file:');
+    if (!masterPassword) return;
 
-      const encryptedBlob = await storageService.downloadFile(file.path);
-      const decryptedBlob = await cryptoService.decryptFile(encryptedBlob, masterPassword);
-      
-      let filename = file.filename;
-      try {
-        filename = await cryptoService.decryptFilename(file.filename, masterPassword);
-      } catch (e) {
-        console.warn('Could not decrypt filename, using original');
-      }
-      
-      const url = URL.createObjectURL(decryptedBlob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = filename;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      URL.revokeObjectURL(url);
-      
-      alert(`✅ File "${filename}" downloaded and decrypted successfully!`);
-      
-    } catch (error) {
-      alert(`❌ Download failed: ${error.message}`);
+    const result = await downloadFile(file.id, masterPassword);
+    if (!result.success) {
+      alert(`❌ Download failed: ${result.error}`);
     }
   };
 
@@ -136,17 +127,38 @@ const FileList = () => {
       return;
     }
 
-    try {
-      await storageService.deleteFile(file.path);
-      setFiles(files.filter(f => f.id !== file.id));
+    const result = await deleteFile(file.id);
+    if (result.success) {
       alert('✅ File deleted successfully!');
-    } catch (error) {
-      alert(`❌ Delete failed: ${error.message}`);
+      refresh();
+    } else {
+      alert(`❌ Delete failed: ${result.error}`);
+    }
+  };
+
+  const handleMouseEnter = async (file) => {
+    setHoveredFile(file);
+    
+    // Если файл зашифрован, пытаемся получить оригинальное имя
+    if (file.is_encrypted && file.type === 'file') {
+      const masterPassword = localStorage.getItem('lastMasterPassword');
+      if (masterPassword) {
+        const result = await getDecryptedFilename(file.id, masterPassword);
+        if (result.success) {
+          setOriginalName(result.filename);
+        } else {
+          // Если не получилось расшифровать, показываем что можем
+          setOriginalName('encrypted_file');
+        }
+      }
     }
   };
 
   const formatFileSize = (bytes) => {
-    if (bytes === 0) return '0 Bytes';
+    if (!bytes || bytes === 0) {
+      if (bytes === 0) return '0 Bytes';
+      return 'N/A';
+    }
     const k = 1024;
     const sizes = ['Bytes', 'KB', 'MB', 'GB'];
     const i = Math.floor(Math.log(bytes) / Math.log(k));
@@ -154,22 +166,66 @@ const FileList = () => {
   };
 
   const formatDate = (dateString) => {
-    return new Date(dateString).toLocaleDateString('en-US', {
-      year: 'numeric',
-      month: 'short',
-      day: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit'
-    });
+    if (!dateString) return '';
+    try {
+      return new Date(dateString).toLocaleDateString('en-US', {
+        year: 'numeric',
+        month: 'short',
+        day: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit'
+      });
+    } catch (e) {
+      return '';
+    }
+  };
+
+  const getFileTooltip = (file) => {
+    if (file.type === 'dir') {
+      return `Folder: ${file.filename}\nPath: ${file.path}\nClick to open`;
+    }
+    
+    if (file.is_encrypted && originalName && hoveredFile?.id === file.id) {
+      return `Original: ${originalName}\nEncrypted: ${file.encrypted_name || file.filename}\nSize: ${formatFileSize(file.size)}\nType: ${file.mime_type || 'unknown'}`;
+    }
+    
+    return `${file.filename}\nSize: ${formatFileSize(file.size)}\nType: ${file.mime_type || 'unknown'}\nPath: ${file.path}`;
+  };
+
+  const getDisplayName = (file) => {
+    if (!file) return 'Unknown';
+    
+    // Используем нормализованные поля
+    const filename = file.filename || '';
+    const encryptedName = file.encrypted_name || '';
+    const path = file.path || file.original_path || '';
+    
+    // Для файлов с именем "unknown" или "encrypted_file" показываем зашифрованное имя или путь
+    if (!filename || filename === 'unknown' || filename === 'encrypted_file') {
+      return encryptedName || 
+             path.split('/').pop() || 
+             'file';
+    }
+    return filename;
   };
 
   if (loading) {
     return (
       <div className="file-list">
-        <div className="loading">Loading files from Yandex.Disk...</div>
+        <div className="loading">
+          <div className="loading-spinner"></div>
+          <p>Loading files from Yandex.Disk...</p>
+          <p>Path: {currentPath}</p>
+        </div>
       </div>
     );
   }
+
+  const breadcrumbs = getBreadcrumbs();
+  
+  // Разделяем файлы и папки для лучшего отображения
+  const folders = files.filter(f => f.type === 'dir');
+  const fileItems = files.filter(f => f.type === 'file');
 
   return (
     <div className="file-list">
@@ -179,6 +235,7 @@ const FileList = () => {
             onClick={handleBackClick} 
             disabled={navigationHistory.length <= 1}
             className="back-button"
+            title="Go back"
           >
             ← Back
           </button>
@@ -191,79 +248,163 @@ const FileList = () => {
                   onClick={() => handleBreadcrumbClick(index)}
                   className={`breadcrumb-link ${index === breadcrumbs.length - 1 ? 'current' : ''}`}
                   disabled={index === breadcrumbs.length - 1}
+                  title={`Go to ${crumb}`}
                 >
                   {crumb}
                 </button>
               </span>
             ))}
           </div>
+          
+          <span className="current-path" title="Current directory">
+            📁 {currentPath === '/' ? 'Root' : currentPath}
+          </span>
         </div>
         
-        <h2>Your Yandex.Disk Files</h2>
-        <FileUpload onUploadSuccess={handleFileUpload} currentPath={currentPath} />
+        <div className="header-main">
+          <h2>Secure Cloud Storage</h2>
+          <div className="stats">
+            <span className="stat-item">
+              📁 {folders.length} folder{folders.length !== 1 ? 's' : ''}
+            </span>
+            <span className="stat-item">
+              📄 {fileItems.length} file{fileItems.length !== 1 ? 's' : ''}
+            </span>
+          </div>
+        </div>
+        
+        <FileUpload 
+          onUploadSuccess={refresh} 
+          currentPath={currentPath}
+        />
       </div>
 
       {error && (
         <div className="error-message">
-          {error}
+          ⚠️ {error}
         </div>
       )}
 
       {files.length === 0 ? (
         <div className="empty-state">
-          <h3>No files found in {currentPath === '/' ? 'Yandex.Disk' : `"${currentPath}"`}</h3>
-          <p>Upload your first encrypted file to get started.</p>
+          <h3>📭 Empty folder</h3>
+          <p>No files or folders found in {currentPath === '/' ? 'root' : `"${currentPath}"`}</p>
+          <p>Upload files or connect Yandex.Disk to see content.</p>
         </div>
       ) : (
         <div className="files-container">
-          <div className="file-grid">
-            {files.map((file) => (
-              <div key={file.id} className="file-item">
-                <div className="file-icon">
-                  {file.mimeType && file.mimeType.startsWith('image/') ? (
-                    <span>🖼️</span>
-                  ) : file.type === 'dir' ? (
-                    <span 
-                      className="folder-icon"
-                      onClick={() => handleFolderClick(file.path)}
-                      style={{cursor: 'pointer'}}
-                      title="Click to open folder"
-                    >
-                      📁
-                    </span>
-                  ) : (
-                    <span>📄</span>
-                  )}
-                  {file.isEncrypted && <span className="encrypted-badge">🔒</span>}
-                </div>
-                
-                <div className="file-info">
-                  <h4 
-                    className="file-name" 
-                    title={file.filename}
-                    style={file.type === 'dir' ? {cursor: 'pointer', color: '#007bff'} : {}}
-                    onClick={file.type === 'dir' ? () => handleFolderClick(file.path) : undefined}
+          {/* Папки */}
+          {folders.length > 0 && (
+            <>
+              <h3 className="section-title">📁 Folders ({folders.length})</h3>
+              <div className="file-grid">
+                {folders.map((folder) => (
+                  <div 
+                    key={folder.id || folder.path} 
+                    className="file-item folder-item"
+                    onMouseEnter={() => handleMouseEnter(folder)}
+                    onMouseLeave={() => {
+                      setHoveredFile(null);
+                      setOriginalName(null);
+                    }}
+                    title={getFileTooltip(folder)}
+                    onClick={() => handleFolderClick(folder)} // Передаем объект папки
                   >
-                    {file.filename}
-                    {file.isEncrypted && <span className="encrypted-indicator"> (encrypted)</span>}
-                  </h4>
-                  <div className="file-meta">
-                    {file.size && (
-                      <span className="file-size">{formatFileSize(file.size)}</span>
-                    )}
-                    {file.modified && (
-                      <span className="file-date">{formatDate(file.modified)}</span>
-                    )}
+                    <div className="file-icon">
+                      <span className="folder-icon-large">📁</span>
+                    </div>
+                    
+                    <div className="file-info">
+                      <h4 className="file-name">
+                        {getDisplayName(folder)}
+                        <span className="folder-indicator"> (folder)</span>
+                      </h4>
+                      <div className="file-meta">
+                        <span className="file-type">Directory</span>
+                        {folder.updated_at && (
+                          <span className="file-date">{formatDate(folder.updated_at)}</span>
+                        )}
+                      </div>
+                    </div>
+                    
+                    <div className="file-actions">
+                      <button 
+                        className="action-btn open-btn"
+                        title="Open folder"
+                        onClick={(e) => {
+                          e.stopPropagation(); // Останавливаем всплытие
+                          handleFolderClick(folder); // Передаем объект папки
+                        }}
+                      >
+                        🔍
+                      </button>
+                    </div>
                   </div>
-                </div>
+                ))}
+              </div>
+            </>
+          )}
 
-                <div className="file-actions">
-                  {file.type === 'file' && (
-                    <>
+          {/* Файлы */}
+          {fileItems.length > 0 && (
+            <>
+              <h3 className="section-title">📄 Files ({fileItems.length})</h3>
+              <div className="file-grid">
+                {fileItems.map((file) => (
+                  <div 
+                    key={file.id} 
+                    className="file-item"
+                    onMouseEnter={() => handleMouseEnter(file)}
+                    onMouseLeave={() => {
+                      setHoveredFile(null);
+                      setOriginalName(null);
+                    }}
+                    title={getFileTooltip(file)}
+                  >
+                    <div className="file-icon">
+                      {file.mime_type?.startsWith('image/') ? (
+                        <span>🖼️</span>
+                      ) : file.mime_type?.includes('pdf') ? (
+                        <span>📕</span>
+                      ) : file.mime_type?.includes('text') ? (
+                        <span>📝</span>
+                      ) : (
+                        <span>📄</span>
+                      )}
+                      {file.is_encrypted && <span className="encrypted-badge">🔒</span>}
+                    </div>
+                    
+                    <div className="file-info">
+                      <h4 className="file-name">
+                        {file.is_encrypted && hoveredFile?.id === file.id && originalName ? (
+                          <>
+                            <span className="original-name">{originalName}</span>
+                            <span className="encrypted-hint"> (encrypted)</span>
+                          </>
+                        ) : (
+                          <>
+                            {getDisplayName(file)}
+                            {file.is_encrypted && <span className="encrypted-indicator"> (encrypted)</span>}
+                          </>
+                        )}
+                      </h4>
+                      <div className="file-meta">
+                        <span className="file-size">{formatFileSize(file.size)}</span>
+                        {file.mime_type && file.mime_type !== 'application/octet-stream' && (
+                          <span className="file-type">{file.mime_type.split('/')[1] || file.mime_type}</span>
+                        )}
+                        {file.updated_at && (
+                          <span className="file-date">{formatDate(file.updated_at)}</span>
+                        )}
+                      </div>
+                    </div>
+
+                    <div className="file-actions">
                       <button 
                         onClick={() => handleDownload(file)}
                         className="action-btn download-btn"
-                        title="Download and decrypt file"
+                        title="Download file"
+                        disabled={file.type === 'dir'}
                       >
                         ⬇️
                       </button>
@@ -274,12 +415,12 @@ const FileList = () => {
                       >
                         🗑️
                       </button>
-                    </>
-                  )}
-                </div>
+                    </div>
+                  </div>
+                ))}
               </div>
-            ))}
-          </div>
+            </>
+          )}
         </div>
       )}
     </div>
