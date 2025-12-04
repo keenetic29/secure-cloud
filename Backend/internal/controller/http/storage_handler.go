@@ -174,9 +174,9 @@ func (h *StorageHandler) DownloadFile(c *gin.Context) {
 		return
 	}
 	
-	// Устанавливаем заголовки для скачивания
+	// Устанавливаем заголовки для скачивания с правильным именем файла
 	c.Header("Content-Description", "File Transfer")
-	c.Header("Content-Disposition", "attachment; filename="+filename)
+	c.Header("Content-Disposition", fmt.Sprintf("attachment; filename=\"%s\"", filename))
 	c.Header("Content-Type", "application/octet-stream")
 	c.Header("Content-Length", fmt.Sprintf("%d", len(content)))
 	c.Header("Content-Transfer-Encoding", "binary")
