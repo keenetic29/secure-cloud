@@ -111,15 +111,105 @@ const FileList = () => {
   };
 
   const handleDownload = async (file) => {
-    if (file.type === 'dir') return;
-    
-    const masterPassword = prompt('Enter your master password to download the file:');
-    if (!masterPassword) return;
+  if (file.type === 'dir') return;
+  
+  const masterPassword = prompt('Enter your master password to download the file:');
+  if (!masterPassword) return;
 
-    const result = await downloadFile(file.id, masterPassword);
-    if (!result.success) {
-      alert(`❌ Download failed: ${result.error}`);
+  // Получаем оригинальное имя файла с расширением
+  let originalFilename = file.filename;
+  
+  console.log('Original filename from file object:', originalFilename);
+  console.log('File metadata:', {
+    encrypted_name: file.encrypted_name,
+    mime_type: file.mime_type,
+    is_encrypted: file.is_encrypted
+  });
+  
+  // Если файл зашифрован, пытаемся получить расшифрованное имя
+  if (file.is_encrypted) {
+    console.log('File is encrypted, trying to get decrypted name...');
+    const result = await getDecryptedFilename(file.id, masterPassword);
+    if (result.success && result.filename) {
+      originalFilename = result.filename;
+      console.log('Decrypted filename:', originalFilename);
+    } else {
+      console.log('Could not decrypt filename, using stored name');
     }
+  }
+  
+  // Проверяем и восстанавливаем расширение, если его нет
+  if (originalFilename && !originalFilename.includes('.')) {
+    console.log('No extension in filename, trying to restore...');
+    
+    // 1. Проверяем MIME-тип файла
+    if (file.mime_type) {
+      const ext = getExtensionFromMimeType(file.mime_type);
+      if (ext) {
+        originalFilename += '.' + ext;
+        console.log('Added extension from MIME type:', ext);
+      }
+    }
+    
+    // 2. Проверяем зашифрованное имя (может содержать подсказку)
+    if (file.encrypted_name && file.encrypted_name.includes('.')) {
+      const encryptedExt = file.encrypted_name.split('.').pop();
+      if (encryptedExt && encryptedExt !== 'encrypted') {
+        originalFilename += '.' + encryptedExt;
+        console.log('Added extension from encrypted name:', encryptedExt);
+      }
+    }
+    
+    // 3. Дефолтное расширение
+    if (!originalFilename.includes('.')) {
+      originalFilename += '.txt';
+      console.log('Added default extension: .bin');
+    }
+  }
+  
+  console.log('Final filename for download:', originalFilename);
+  
+  const result = await downloadFile(file.id, masterPassword, originalFilename);
+  if (!result.success) {
+    alert(`❌ Download failed: ${result.error}`);
+  } else {
+    console.log(`✅ File downloaded as: ${result.filename}`);
+    // Можно показать уведомление
+    // alert(`✅ File downloaded as: ${result.filename}`);
+  }
+};
+
+// Функция для извлечения расширения из оригинального имени файла
+const extractExtension = (filename) => {
+  if (!filename) return null;
+  
+  // Убираем .encrypted если есть
+  const cleanName = filename.replace(/\.encrypted$/, '');
+  
+  // Ищем расширение
+  const match = cleanName.match(/\.([a-zA-Z0-9]+)$/);
+  return match ? match[1] : null;
+};
+
+
+  const getExtensionFromMimeType = (mimeType) => {
+    const mimeToExt = {
+      'image/jpeg': 'jpg',
+      'image/jpg': 'jpg',
+      'image/png': 'png',
+      'image/gif': 'gif',
+      'application/pdf': 'pdf',
+      'text/plain': 'txt',
+      'text/html': 'html',
+      'application/msword': 'doc',
+      'application/vnd.openxmlformats-officedocument.wordprocessingml.document': 'docx',
+      'application/vnd.ms-excel': 'xls',
+      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': 'xlsx',
+      'application/zip': 'zip',
+      'application/x-rar-compressed': 'rar'
+    };
+    
+    return mimeToExt[mimeType?.toLowerCase()];
   };
 
   const handleDelete = async (file) => {

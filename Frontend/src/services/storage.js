@@ -30,8 +30,23 @@ export const storageService = {
   downloadFile: (fileId, masterPassword) => 
     api.post(`/storage/files/${fileId}/download`, 
       { master_password: masterPassword },
-      { responseType: 'blob' }
-    ),
+      { 
+        responseType: 'blob',
+        // Добавляем обработку заголовков
+        transformResponse: [(data, headers) => {
+          return {
+            data: data,
+            headers: headers
+          };
+        }]
+      }
+    ).then(response => {
+      // Нормализуем ответ для единообразной обработки
+      return {
+        data: response.data.data,
+        headers: response.data.headers || response.headers
+      };
+    }),
 
   // Удаление файла
   deleteFile: (fileId) => 

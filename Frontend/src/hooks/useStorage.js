@@ -147,39 +147,137 @@ export const useStorage = (path = '/') => {
     }
   };
 
-  const downloadFile = async (fileId, masterPassword) => {
-    try {
-      const response = await storageService.downloadFile(fileId, masterPassword);
+  const downloadFile = async (fileId, masterPassword, originalFilename = null) => {
+  try {
+    const response = await storageService.downloadFile(fileId, masterPassword);
+    
+    // Получаем имя файла из заголовков
+    const contentDisposition = response.headers['content-disposition'];
+    let filename = 'downloaded_file';
+    
+    if (contentDisposition) {
+      // Извлекаем имя файла из заголовка Content-Disposition
+      const filenameMatch = contentDisposition.match(/filename="([^"]+)"/);
+      if (filenameMatch && filenameMatch.length === 2) {
+        filename = decodeURIComponent(filenameMatch[1]);
+        console.log('Filename from headers:', filename);
+      }
+    }
+    
+    // Если имя файла не извлечено из заголовков, используем переданное оригинальное имя
+    if ((filename === 'downloaded_file' || !filename.includes('.')) && originalFilename) {
+      filename = originalFilename;
+      console.log('Using original filename:', filename);
+    }
+    
+    // Убедимся, что у файла есть расширение
+    if (!filename.includes('.')) {
+      console.log('No extension in filename, trying to determine...');
       
-      const contentDisposition = response.headers['content-disposition'];
-      let filename = 'downloaded_file';
-      
-      if (contentDisposition) {
-        const filenameMatch = contentDisposition.match(/filename="(.+)"/);
-        if (filenameMatch && filenameMatch.length === 2) {
-          filename = decodeURIComponent(filenameMatch[1]);
+      // 1. Проверим MIME-тип из заголовков ответа
+      const contentType = response.headers['content-type'];
+      if (contentType) {
+        const ext = getExtensionFromMimeType(contentType);
+        if (ext) {
+          filename += '.' + ext;
+          console.log('Added extension from MIME type:', ext);
         }
       }
       
-      const blob = new Blob([response.data]);
-      const url = window.URL.createObjectURL(blob);
-      const link = document.createElement('a');
-      link.href = url;
-      link.setAttribute('download', filename);
-      document.body.appendChild(link);
-      link.click();
-      link.remove();
-      window.URL.revokeObjectURL(url);
+      // 2. Если все еще нет расширения, проверим исходные данные файла
+      if (!filename.includes('.') && originalFilename) {
+        // Попробуем извлечь расширение из оригинального имени
+        const extMatch = originalFilename.match(/\.([a-zA-Z0-9]+)$/);
+        if (extMatch && extMatch[1]) {
+          filename += '.' + extMatch[1];
+          console.log('Added extension from original name:', extMatch[1]);
+        }
+      }
       
-      return { success: true };
-    } catch (error) {
-      console.error('Download error:', error);
-      return { 
-        success: false, 
-        error: error.response?.data?.error || 'Download failed' 
-      };
+      // 3. Дефолтное расширение
+      if (!filename.includes('.')) {
+        filename += '.bin';
+        console.log('Added default extension: .bin');
+      }
     }
+    
+    console.log('Final filename for download:', filename);
+    
+    // Создаем blob с правильным MIME-типом
+    const mimeType = response.headers['content-type'] || 'application/octet-stream';
+    const blob = new Blob([response.data], { type: mimeType });
+    
+    // Создаем ссылку для скачивания
+    const url = window.URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.setAttribute('download', filename);
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    window.URL.revokeObjectURL(url);
+    
+    return { success: true, filename: filename };
+  } catch (error) {
+    console.error('Download error:', error);
+    return { 
+      success: false, 
+      error: error.response?.data?.error || 'Download failed' 
+    };
+  }
+};
+
+// Улучшенная функция для определения расширения
+const getExtensionFromMimeType = (mimeType) => {
+  const mimeToExt = {
+    // Images
+    'image/jpeg': 'jpg',
+    'image/jpg': 'jpg',
+    'image/png': 'png',
+    'image/gif': 'gif',
+    'image/webp': 'webp',
+    'image/svg+xml': 'svg',
+    'image/bmp': 'bmp',
+    'image/tiff': 'tiff',
+    
+    // Documents
+    'application/pdf': 'pdf',
+    'application/msword': 'doc',
+    'application/vnd.openxmlformats-officedocument.wordprocessingml.document': 'docx',
+    'application/vnd.ms-excel': 'xls',
+    'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': 'xlsx',
+    'application/vnd.ms-powerpoint': 'ppt',
+    'application/vnd.openxmlformats-officedocument.presentationml.presentation': 'pptx',
+    
+    // Text
+    'text/plain': 'txt',
+    'text/html': 'html',
+    'text/css': 'css',
+    'text/javascript': 'js',
+    'application/json': 'json',
+    'application/xml': 'xml',
+    
+    // Archives
+    'application/zip': 'zip',
+    'application/x-rar-compressed': 'rar',
+    'application/x-7z-compressed': '7z',
+    'application/gzip': 'gz',
+    'application/x-tar': 'tar',
+    
+    // Audio/Video
+    'audio/mpeg': 'mp3',
+    'audio/wav': 'wav',
+    'video/mp4': 'mp4',
+    'video/mpeg': 'mpeg',
+    'video/avi': 'avi',
+    
+    // Other
+    'application/octet-stream': 'bin'
   };
+  
+  return mimeToExt[mimeType?.toLowerCase()];
+};
+
 
   const deleteFile = async (fileId) => {
     try {
